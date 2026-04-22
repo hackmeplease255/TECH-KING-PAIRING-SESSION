@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tech King Pair Portal</title>
+  <style>
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Arial,sans-serif;
+      background:linear-gradient(180deg,#070b1b,#101935);
+      color:#e8eefb;
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      padding:24px
+    }
+    .card{
+      width:100%;
+      max-width:460px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:26px;
+      padding:32px;
+      box-shadow:0 20px 50px rgba(0,0,0,.4)
+    }
+    .logo{text-align:center;font-size:40px;margin-bottom:6px}
+    h1{
+      text-align:center;
+      margin:0 0 8px;
+      font-size:22px;
+      background:linear-gradient(90deg,#9a7cff,#4ecbff,#3adb7a);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent
+    }
+    .sub{text-align:center;color:#b9c4df;margin:0 0 26px;line-height:1.35}
+    label{display:block;margin:0 0 10px;color:#c8d1ea;font-size:15px;font-weight:700}
+    input{
+      width:100%;
+      padding:18px 16px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.1);
+      background:rgba(255,255,255,.04);
+      color:#fff;
+      font-size:18px;
+      outline:none
+    }
+    .help{margin:12px 0 18px;color:#a4b0d0;line-height:1.4}
+    .btn{
+      width:100%;
+      padding:18px;
+      border:none;
+      border-radius:18px;
+      font-size:17px;
+      font-weight:700;
+      cursor:pointer;
+      background:linear-gradient(90deg,#8f63ff,#53a9ff,#32cf74);
+      color:#0f1222
+    }
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .status,.tip,.codebox,.session{display:none;margin-top:18px;border-radius:18px;padding:18px}
+    .status.show,.tip.show,.codebox.show,.session.show{display:block}
+    .status{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+    .status.error{color:#ff8b8b;border-color:rgba(255,102,102,.25)}
+    .status.ok{color:#8ff0ba;border-color:rgba(67,211,130,.25)}
+    .status.wait{color:#ffd87a;border-color:rgba(255,201,87,.2)}
+    .codebox{background:rgba(85,55,170,.18);border:1px solid rgba(161,118,255,.24);text-align:center}
+    .codelabel{letter-spacing:4px;color:#c7b8ff;font-size:12px;margin-bottom:10px}
+    .code{font-size:44px;font-weight:800;letter-spacing:6px;font-family:monospace;margin-bottom:14px}
+    .copy{
+      width:100%;
+      padding:16px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,.09);
+      background:rgba(255,255,255,.05);
+      color:#fff;
+      font-size:16px;
+      font-weight:700;
+      cursor:pointer
+    }
+    .tip{background:rgba(49,147,114,.14);border:1px solid rgba(71,214,154,.22);color:#d8ffe9;line-height:1.45}
+    .session pre{
+      max-height:220px;
+      overflow:auto;
+      white-space:pre-wrap;
+      word-break:break-all;
+      background:rgba(0,0,0,.25);
+      padding:12px;
+      border-radius:12px
+    }
+    .row{display:flex;gap:10px;margin-top:10px}
+    .row button{flex:1}
+    .spinner{
+      display:inline-block;
+      width:16px;
+      height:16px;
+      border:2px solid rgba(0,0,0,.25);
+      border-top-color:#000;
+      border-radius:50%;
+      animation:spin .8s linear infinite;
+      vertical-align:middle;
+      margin-right:8px
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">👑</div>
+    <h1>Tech King Pair Portal</h1>
+    <p class="sub">Enter your WhatsApp number, get a pair code, then link with phone number inside WhatsApp.</p>
+
+    <label for="phone">WhatsApp Number</label>
+    <input id="phone" type="text" inputmode="numeric" maxlength="15" placeholder="255747490535" />
+
+    <p class="help">Open WhatsApp → Linked Devices → Link a Device → Link with Phone Number.</p>
+
+    <button id="pairBtn" class="btn" onclick="requestPair()">Get Pair Code</button>
+
+    <div id="status" class="status"></div>
+
+    <div id="codebox" class="codebox">
+      <div class="codelabel">PAIR CODE</div>
+      <div id="code" class="code">--------</div>
+      <button class="copy" onclick="copyCode()">Copy Code</button>
+    </div>
+
+    <div id="tip" class="tip">
+      After you enter the code in WhatsApp, wait here. The site will keep checking and will show the session below even if inbox sending fails.
+    </div>
+
+    <div id="session" class="session">
+      <pre id="sessionText"></pre>
+      <div class="row">
+        <button class="copy" onclick="copySession()">Copy Session</button>
+        <button class="copy" onclick="downloadSession()">Download Session</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentId = null;
+    let currentSession = '';
+    let pollingActive = false;
+    let consecutiveFailures = 0;
+
+    function setStatus(msg, cls = 'wait') {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status show ' + cls;
+    }
+
+    function showCode(code) {
+      document.getElementById('code').textContent = String(code || '')
+        .replace(/\s+/g, '')
+        .replace(/-/g, '')
+        .toUpperCase();
+      document.getElementById('codebox').classList.add('show');
+      document.getElementById('tip').classList.add('show');
+    }
+
+    function showSession(session) {
+      currentSession = session;
+      document.getElementById('sessionText').textContent = session;
+      document.getElementById('session').classList.add('show');
+    }
+
+    async function requestPair() {
+      const phone = document.getElementById('phone').value.replace(/\D/g, '');
+      if (phone.length < 7) {
+        alert('Enter a valid phone number');
+        return;
+      }
+
+      currentId = null;
+      currentSession = '';
+      consecutiveFailures = 0;
+      pollingActive = false;
+
+      document.getElementById('session').classList.remove('show');
+      document.getElementById('codebox').classList.remove('show');
+      document.getElementById('tip').classList.remove('show');
+
+      const btn = document.getElementById('pairBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Generating...';
+
+      setStatus('Connecting to WhatsApp and creating a live pairing session...', 'wait');
+
+      try {
+        const res = await fetch('/api/pair/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+
+        currentId = data.id;
+
+        if (data.pairCode) {
+          showCode(data.pairCode);
+        }
+
+        setStatus('Enter this code in WhatsApp now.', 'wait');
+        startPolling();
+      } catch (err) {
+        setStatus('Error: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Get Pair Code';
+      }
+    }
+
+    async function startPolling() {
+      if (!currentId || pollingActive) return;
+      pollingActive = true;
+
+      while (pollingActive && currentId && !currentSession) {
+        try {
+          const res = await fetch('/api/pair/status/' + currentId, { cache: 'no-store' });
+          const data = await res.json();
+
+          if (!res.ok) throw new Error(data.error || 'Status failed');
+
+          consecutiveFailures = 0;
+
+          if (data.pairCode) {
+            showCode(data.pairCode);
+          }
+
+          if (data.hasSession) {
+            setStatus('Session found. Loading now...', 'ok');
+            const ok = await fetchSession();
+            if (ok) {
+              pollingActive = false;
+              break;
+            }
+          }
+
+          if (data.status === 'error' || data.status === 'expired') {
+            setStatus(data.error || data.status, 'error');
+            pollingActive = false;
+            break;
+          }
+
+          if (data.status === 'logged_out' && !data.hasSession) {
+            setStatus('Device logged out before session was captured.', 'error');
+            pollingActive = false;
+            break;
+          }
+
+          if (!data.hasSession) {
+            setStatus('Waiting for link. After entering the code in WhatsApp, stay here for a moment.', 'wait');
+          }
+        } catch (err) {
+          consecutiveFailures += 1;
+          setStatus('Temporary connection issue. Retrying... (' + consecutiveFailures + ')', 'wait');
+
+          if (consecutiveFailures >= 20) {
+            setStatus('Status check failed too many times. Reload the page and try again.', 'error');
+            pollingActive = false;
+            break;
+          }
+        }
+
+        await delay(2500);
+      }
+    }
+
+    async function fetchSession() {
+      for (let i = 0; i < 30; i++) {
+        try {
+          const res = await fetch('/api/session/' + currentId, { cache: 'no-store' });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.session) {
+              showSession(data.session);
+              setStatus(
+                data.notified
+                  ? 'Session ready and sent to your WhatsApp too.'
+                  : 'Session ready below.',
+                'ok'
+              );
+              return true;
+            }
+          }
+        } catch (_) {}
+
+        await delay(2000);
+      }
+
+      return false;
+    }
+
+    function delay(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function copyAny(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (_) {}
+
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+
+      let ok = false;
+      try {
+        ok = document.execCommand('copy');
+      } catch (_) {}
+
+      document.body.removeChild(ta);
+      return ok;
+    }
+
+    async function copyCode() {
+      const ok = await copyAny(document.getElementById('code').textContent.trim());
+      setStatus(ok ? 'Pair code copied.' : 'Could not copy pair code.', ok ? 'ok' : 'error');
+    }
+
+    async function copySession() {
+      if (!currentSession) return;
+      const ok = await copyAny(currentSession);
+      setStatus(ok ? 'Session copied.' : 'Could not copy session.', ok ? 'ok' : 'error');
+    }
+
+    function downloadSession() {
+      if (!currentSession) return;
+      const blob = new Blob(
+        [JSON.stringify({ session: currentSession }, null, 2)],
+        { type: 'application/json' }
+      );
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'techking-session.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  </script>
+</body>
+</html>
